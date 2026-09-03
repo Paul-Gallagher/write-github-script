@@ -1,0 +1,17 @@
+name: Test App Auth
+on: workflow_dispatch
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: 4815518
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Prove it worked
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: gh api /repos/${{ github.repository }} --jq '.full_name, .private'
