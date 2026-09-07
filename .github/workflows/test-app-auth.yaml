@@ -5,11 +5,28 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+      # change this to use our Python and not the pre-canned Javascript action
+      # - uses: actions/create-github-app-token@v3.2.0
+      #   id: app-token
+      #   with:
+      #     app-id: 4815518
+      #     private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v7.0.1
+
+      - uses: astral-sh/setup-uv@v10.0.1
+
+      # Our own from-scratch equivalent of actions/create-github-app-token
+      # (see src/github_app_token.py, and the JWT walkthrough in Appendix F
+      # of Github EMU.md) - same result, no third-party action in the chain
+      # for the App-authentication step itself.
+      - name: Get installation token via our own script
         id: app-token
-        with:
-          app-id: 4815518
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+        env:
+          GITHUB_APP_ID: 4815518
+          GITHUB_APP_INSTALLATION_ID: 158725951
+          GITHUB_APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }} # TODO: get from AWS secrets
+        run: uv run src/github_app_token.py
 
       - name: Prove it worked
         env:

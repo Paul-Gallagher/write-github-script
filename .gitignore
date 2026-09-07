@@ -1,1 +1,7 @@
 *.pem
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.python-version

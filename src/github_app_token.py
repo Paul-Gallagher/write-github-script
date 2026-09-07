@@ -12,49 +12,67 @@ exactly two HTTP calls.
        token that actually authenticates API calls or a `git push` - it
        behaves exactly like a PAT from that point on, and expires in an hour.
 
-Run against your own practice App (see Appendix F) to see it end-to-end:
-    pip install pyjwt cryptography requests
-    python github_app_token.py
+Needs three env vars set either way, local run or CI (test-app-auth.yaml sets
+all three; locally, e.g. in PowerShell: $env:GITHUB_APP_ID="4815518";
+$env:GITHUB_APP_INSTALLATION_ID="158725951" - see the App's settings page and
+the install URL respectively):
+    GITHUB_APP_ID
+    GITHUB_APP_INSTALLATION_ID
+    GITHUB_APP_PRIVATE_KEY - raw PEM content, not a path. Only needed locally
+        if PRIVATE_KEY_PATH below isn't already pointing at a real file - CI
+        always sets this directly (currently from a GitHub secret, TODO: AWS
+        Secrets Manager instead - see Appendix A9 of Github EMU.md) so the
+        key never touches disk there.
+
+Run: uv run src/github_app_token.py
+
+When GITHUB_OUTPUT is set (i.e. running as an Actions step), the resulting
+token is also written there as `token=...` so a later step can read it via
+`steps.<id>.outputs.token`, the same shape actions/create-github-app-token
+itself produces.
 """
 
 from __future__ import annotations
 
+import os
 import time
+from typing import Any
 
 import jwt  # PyJWT
 import requests
 
-APP_ID = '4815518'  # from the App's settings page, e.g. github.com/settings/apps/<name>
-PRIVATE_KEY_PATH = 'app-private-key.pem'  # the .pem downloaded when you generated the key
-INSTALLATION_ID = 'REPLACE_ME'  # from the URL after installing the App, or via list_installations() below
+PRIVATE_KEY_PATH = "C:\\Users\\u769697\\Olympus\\write-github-script\\jackie-pants.pem"  # local-only fallback - the .pem downloaded when you generated the key
 
 
-def build_signed_jwt(app_id: str, private_key_path: str) -> str:
+def build_signed_jwt(app_id: str, private_key: bytes | str) -> str:
     """Step 1: prove we ARE the App, not acting on its behalf yet.
+
+    Takes the key material directly rather than a path - the caller decides
+    where it comes from (a local file for a dev run, straight from a secret
+    for a CI run), so this function never has to touch disk.
 
     Valid ~10 minutes max (GitHub's own cap) - this JWT is never used directly
     against ordinary GitHub API endpoints, only to fetch an installation token.
     """
-    with open(private_key_path, 'rb') as f:
-        private_key = f.read()
-
     now = int(time.time())
-    payload = {
-        'iat': now - 60,  # issued-at, deliberately backdated 60s - GitHub is strict about clock drift
-        'exp': now + (9 * 60),  # 9 minutes; leaves headroom under GitHub's 10-minute cap
-        'iss': app_id,  # the App's identity - this is what GitHub actually checks
+    payload: dict[str, int | str] = {
+        "iat": now
+        - 60,  # issued-at, deliberately backdated 60s - GitHub is strict about clock drift
+        "exp": now
+        + (9 * 60),  # 9 minutes; leaves headroom under GitHub's 10-minute cap
+        "iss": app_id,  # the App's identity - this is what GitHub actually checks
     }
-    return jwt.encode(payload, private_key, algorithm='RS256')
+    return jwt.encode(payload, private_key, algorithm="RS256")
 
 
-def list_installations(signed_jwt: str) -> list[dict]:
+def list_installations(signed_jwt: str) -> list[dict[str, Any]]:
     """Optional: find INSTALLATION_ID if you don't already have it from the install URL."""
     resp = requests.get(
-        'https://api.github.com/app/installations',
+        "https://api.github.com/app/installations",
         headers={
-            'Authorization': f'Bearer {signed_jwt}',
-            'Accept': 'application/vnd.github+json',
-            'X-GitHub-Api-Version': '2022-11-28',
+            "Authorization": f"Bearer {signed_jwt}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
         },
         timeout=15,
     )
@@ -62,14 +80,14 @@ def list_installations(signed_jwt: str) -> list[dict]:
     return resp.json()
 
 
-def get_installation_token(signed_jwt: str, installation_id: str) -> dict:
+def get_installation_token(signed_jwt: str, installation_id: str) -> dict[str, Any]:
     """Step 2: exchange the App-identity JWT for a real, usable, installation-scoped token."""
     resp = requests.post(
-        f'https://api.github.com/app/installations/{installation_id}/access_tokens',
+        f"https://api.github.com/app/installations/{installation_id}/access_tokens",
         headers={
-            'Authorization': f'Bearer {signed_jwt}',  # Bearer + the JWT - not "token", this isn't a PAT
-            'Accept': 'application/vnd.github+json',
-            'X-GitHub-Api-Version': '2022-11-28',
+            "Authorization": f"Bearer {signed_jwt}",  # Bearer + the JWT - not "token", this isn't a PAT
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
         },
         timeout=15,
     )
@@ -77,19 +95,41 @@ def get_installation_token(signed_jwt: str, installation_id: str) -> dict:
     return resp.json()  # {'token': 'ghs_...', 'expires_at': '...', 'permissions': {...}, 'repositories': [...]}
 
 
-if __name__ == '__main__':
-    signed = build_signed_jwt(APP_ID, PRIVATE_KEY_PATH)
+def _resolve_private_key() -> bytes | str:
+    """CI (GITHUB_APP_PRIVATE_KEY, raw PEM content) takes priority over the local PRIVATE_KEY_PATH file."""
+    from_env = os.environ.get("GITHUB_APP_PRIVATE_KEY")
+    if from_env:
+        return from_env
+    with open(PRIVATE_KEY_PATH, "rb") as f:
+        return f.read()
 
-    if INSTALLATION_ID == 'REPLACE_ME':
-        print('No INSTALLATION_ID set - listing installations visible to this App:')
+
+if __name__ == "__main__":
+    app_id = os.environ.get("GITHUB_APP_ID", "")
+    if not app_id:  # required - no sensible default, and no fallback behaviour like installation_id has
+        raise SystemExit("GITHUB_APP_ID must be set - see the App's settings page.")
+    installation_id = os.environ.get("GITHUB_APP_INSTALLATION_ID", "")
+    signed = build_signed_jwt(app_id, _resolve_private_key())
+
+    if not installation_id:
+        print("No GITHUB_APP_INSTALLATION_ID set - listing installations visible to this App:")
         for installation in list_installations(signed):
-            print(f"  id={installation['id']}  account={installation['account']['login']}")
-        raise SystemExit('Set INSTALLATION_ID to one of the above and re-run.')
+            print(
+                f"  id={installation['id']}  account={installation['account']['login']}"
+            )
+        raise SystemExit("Set GITHUB_APP_INSTALLATION_ID to one of the above and re-run.")
 
-    result = get_installation_token(signed, INSTALLATION_ID)
+    result = get_installation_token(signed, installation_id)
     print(f"Installation token: {result['token']}")
     print(f"Expires: {result['expires_at']}")
     print(f"Granted permissions: {result['permissions']}")
+
+    # If running as a GitHub Actions step, hand the token to later steps the
+    # same way actions/create-github-app-token does - steps.<id>.outputs.token
+    github_output = os.environ.get("GITHUB_OUTPUT")
+    if github_output:
+        with open(github_output, "a") as f:
+            f.write(f"token={result['token']}\n")
 
     # From here it behaves exactly like a PAT, within its granted scope:
     #   git clone https://x-access-token:<token>@github.com/owner/repo.git

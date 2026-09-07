@@ -1,0 +1,11 @@
+[project]
+name = "write-github-script"
+version = "0.1.0"
+description = "Practice repo for GitHub App auth - see Appendix F of Github EMU.md"
+requires-python = ">=3.12"
+dependencies = ["cryptography>=50.0.1", "pyjwt>=2.13.0", "requests>=2.34.2"]
+
+# A loose collection of standalone scripts in src/, not an installable package -
+# skip the packaging/build step uv init assumes by default.
+[tool.uv]
+package = false
