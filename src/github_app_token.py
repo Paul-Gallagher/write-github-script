@@ -24,7 +24,7 @@ import time
 import jwt  # PyJWT
 import requests
 
-APP_ID = 'REPLACE_ME'  # from the App's settings page, e.g. github.com/settings/apps/<name>
+APP_ID = '4815518'  # from the App's settings page, e.g. github.com/settings/apps/<name>
 PRIVATE_KEY_PATH = 'app-private-key.pem'  # the .pem downloaded when you generated the key
 INSTALLATION_ID = 'REPLACE_ME'  # from the URL after installing the App, or via list_installations() below
 
