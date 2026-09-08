@@ -12,9 +12,9 @@ jobs:
       #     app-id: 4815518
       #     private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: astral-sh/setup-uv@v10.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
 
       # Our own from-scratch equivalent of actions/create-github-app-token
       # (see src/github_app_token.py, and the JWT walkthrough in Appendix F
